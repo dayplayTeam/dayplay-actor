@@ -1,0 +1,11 @@
+{
+  "actorSpecification": 1,
+  "name": "dayplay-local-intelligence",
+  "title": "DayPlay \u2014 SF Bay Area Local Intelligence",
+  "description": "Verified real-time places, events, and AI-composed outing itineraries for the San Francisco Bay Area (San Francisco, Oakland, Berkeley \u2014 35 neighborhood centroids). Honest zero-results: when nothing verified exists, the Actor says so instead of inventing venues. Powered by DayPlay (dayplay.io).",
+  "version": "0.1.0",
+  "buildTag": "latest",
+  "minMemoryMbytes": 256,
+  "input": "./input_schema.json",
+  "dockerfile": "./Dockerfile"
+}

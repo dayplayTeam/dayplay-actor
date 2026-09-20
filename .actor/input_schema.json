@@ -1,0 +1,54 @@
+{
+  "title": "DayPlay SF Bay Area Local Intelligence",
+  "description": "Query DayPlay's verified real-time dataset: places, events, neighborhood centroids, or a fully composed outing itinerary with walk legs. Strictly San Francisco, Oakland, and Berkeley.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "mode": {
+      "title": "Mode",
+      "type": "string",
+      "enum": ["plan", "events", "places", "neighborhoods"],
+      "default": "plan",
+      "description": "plan = composed multi-stop itinerary with walk times (flagship). events/places = raw verified records. neighborhoods = the 35 in-market centroids."
+    },
+    "neighborhood": {
+      "title": "Neighborhood",
+      "type": "string",
+      "description": "Exact SF Bay Area neighborhood name (e.g. Mission, North Beach, Oakland, Berkeley). Out-of-market names are refused by protocol — DayPlay never invents venues."
+    },
+    "date": {
+      "title": "Date",
+      "type": "string",
+      "editor": "datepicker",
+      "description": "Outing/query date as YYYY-MM-DD. Required for mode=plan and mode=events."
+    },
+    "interests": {
+      "title": "Interests",
+      "type": "string",
+      "description": "Optional comma-separated interests (e.g. music, food, art, comedy) to prioritize in plan mode."
+    },
+    "budget": {
+      "title": "Budget",
+      "type": "string",
+      "enum": ["free", "budget", "moderate", "splurge"],
+      "description": "Optional budget tier for plan mode."
+    },
+    "maxStops": {
+      "title": "Max stops (plan mode)",
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 6,
+      "default": 4,
+      "description": "Maximum number of stops in a composed itinerary."
+    },
+    "limit": {
+      "title": "Record limit (events/places mode)",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 20,
+      "description": "Max records returned in events or places mode."
+    }
+  },
+  "required": ["neighborhood"]
+}

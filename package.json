@@ -1,0 +1,16 @@
+{
+  "name": "dayplay-actor",
+  "version": "0.1.0",
+  "description": "DayPlay — SF Bay Area local intelligence Actor: verified places, events, and composed outing itineraries",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "start:prod": "node src/main.js"
+  },
+  "dependencies": {
+    "apify": "^3.4.0"
+  },
+  "author": "DayPlay Team",
+  "license": "MIT"
+}

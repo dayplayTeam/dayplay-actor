@@ -1,0 +1,4 @@
+node_modules/
+storage/key_value_stores/default/INPUT.json
+apify_storage/
+.DS_Store
