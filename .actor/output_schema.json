@@ -1,0 +1,13 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "DayPlay results",
+  "description": "Verified records and/or composed outing itineraries written to the run's default dataset — one item per record (plan mode writes a single itinerary item with stops and walk legs; events/places modes write one item per record; refusals/empty results write a single status item).",
+  "properties": {
+    "results": {
+      "type": "string",
+      "title": "Results",
+      "description": "All records written to the default dataset: composed itineraries (plan mode), verified event/place records (events/places modes), or status items (out_of_market / zero_results / input_error).",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    }
+  }
+}

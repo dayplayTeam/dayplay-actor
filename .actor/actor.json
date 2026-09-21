@@ -7,5 +7,6 @@
   "buildTag": "latest",
   "minMemoryMbytes": 256,
   "input": "./input_schema.json",
-  "dockerfile": "./Dockerfile"
+  "dockerfile": "./Dockerfile",
+  "output": "./output_schema.json"
 }
