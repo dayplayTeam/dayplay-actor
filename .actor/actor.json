@@ -1,8 +1,8 @@
 {
   "actorSpecification": 1,
   "name": "dayplay-local-intelligence",
-  "title": "DayPlay \u2014 SF Bay Area Local Intelligence",
-  "description": "Verified real-time places, events, and AI-composed outing itineraries for the San Francisco Bay Area (San Francisco, Oakland, Berkeley \u2014 35 neighborhood centroids). Honest zero-results: when nothing verified exists, the Actor says so instead of inventing venues. Powered by DayPlay (dayplay.io).",
+  "title": "DayPlay \u2014 SF Bay Area Events, Places & Itinerary Planner",
+  "description": "Verified real-time places, events, and AI-composed outing itineraries for San Francisco, Oakland & Berkeley. Things to do, date nights, nightlife & weekend plans from a deterministic dataset \u2014 honest zero-results, never fabricated. Free. Powered by dayplay.io.",
   "version": "0.1",
   "buildTag": "latest",
   "minMemoryMbytes": 256,
