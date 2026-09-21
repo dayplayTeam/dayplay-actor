@@ -7,14 +7,21 @@
     "mode": {
       "title": "Mode",
       "type": "string",
-      "enum": ["plan", "events", "places", "neighborhoods"],
+      "enum": [
+        "plan",
+        "events",
+        "places",
+        "neighborhoods"
+      ],
       "default": "plan",
-      "description": "plan = composed multi-stop itinerary with walk times (flagship). events/places = raw verified records. neighborhoods = the 35 in-market centroids."
+      "description": "plan = composed multi-stop itinerary with walk times (flagship). events/places = raw verified records. neighborhoods = the 35 in-market centroids.",
+      "editor": "select"
     },
     "neighborhood": {
       "title": "Neighborhood",
       "type": "string",
-      "description": "Exact SF Bay Area neighborhood name (e.g. Mission, North Beach, Oakland, Berkeley). Out-of-market names are refused by protocol — DayPlay never invents venues."
+      "description": "Exact SF Bay Area neighborhood name (e.g. Mission, North Beach, Oakland, Berkeley). Out-of-market names are refused by protocol \u2014 DayPlay never invents venues.",
+      "editor": "textfield"
     },
     "date": {
       "title": "Date",
@@ -25,13 +32,20 @@
     "interests": {
       "title": "Interests",
       "type": "string",
-      "description": "Optional comma-separated interests (e.g. music, food, art, comedy) to prioritize in plan mode."
+      "description": "Optional comma-separated interests (e.g. music, food, art, comedy) to prioritize in plan mode.",
+      "editor": "textfield"
     },
     "budget": {
       "title": "Budget",
       "type": "string",
-      "enum": ["free", "budget", "moderate", "splurge"],
-      "description": "Optional budget tier for plan mode."
+      "enum": [
+        "free",
+        "budget",
+        "moderate",
+        "splurge"
+      ],
+      "description": "Optional budget tier for plan mode.",
+      "editor": "select"
     },
     "maxStops": {
       "title": "Max stops (plan mode)",
@@ -39,7 +53,8 @@
       "minimum": 2,
       "maximum": 6,
       "default": 4,
-      "description": "Maximum number of stops in a composed itinerary."
+      "description": "Maximum number of stops in a composed itinerary.",
+      "editor": "number"
     },
     "limit": {
       "title": "Record limit (events/places mode)",
@@ -47,8 +62,11 @@
       "minimum": 1,
       "maximum": 100,
       "default": 20,
-      "description": "Max records returned in events or places mode."
+      "description": "Max records returned in events or places mode.",
+      "editor": "number"
     }
   },
-  "required": ["neighborhood"]
+  "required": [
+    "neighborhood"
+  ]
 }
