@@ -1,0 +1,38 @@
+{
+  "actorSpecification": 1,
+  "title": "DayPlay results",
+  "description": "Verified records and composed outing itineraries. One dataset item per record: an itinerary (plan mode) has status/type/neighborhood/date/plan; event/place records have name/category/address/rating; refusal items carry a status message.",
+  "fields": {
+    "type": "object",
+    "properties": {
+      "status": { "type": "string", "title": "Status", "description": "ok | zero_results | out_of_market | input_error" },
+      "type": { "type": "string", "title": "Record type", "description": "itinerary | event | place" },
+      "neighborhood": { "type": "string", "title": "Neighborhood" },
+      "date": { "type": "string", "title": "Date (YYYY-MM-DD)" },
+      "plan": { "type": "object", "title": "Itinerary plan", "description": "Composed plan: stops[], walk_legs[], total_walk_minutes, estimated_visit_minutes" },
+      "name": { "type": "string", "title": "Name" },
+      "category": { "type": "string", "title": "Category" },
+      "start_time": { "type": "string", "title": "Start time" },
+      "rating": { "type": "number", "title": "Rating" },
+      "address": { "type": "string", "title": "Address" },
+      "description": { "type": "string", "title": "Description" },
+      "url": { "type": "string", "title": "Source URL" },
+      "message": { "type": "string", "title": "Status message", "description": "Honest-result explanation for zero_results / out_of_market / input_error items" },
+      "dayplay_deep_link": { "type": "string", "title": "DayPlay link" },
+      "powered_by": { "type": "string", "title": "Powered by" },
+      "cta": { "type": "string", "title": "Call to action" }
+    }
+  },
+  "views": {
+    "itinerary": {
+      "title": "Itinerary",
+      "transformation": { "fields": ["status", "neighborhood", "date", "plan", "cta"] },
+      "display": { "component": "table" }
+    },
+    "records": {
+      "title": "Records",
+      "transformation": { "fields": ["status", "type", "name", "category", "start_time", "address", "rating", "description", "dayplay_deep_link"] },
+      "display": { "component": "table" }
+    }
+  }
+}
