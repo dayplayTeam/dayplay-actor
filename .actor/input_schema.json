@@ -20,14 +20,16 @@
     "neighborhood": {
       "title": "Neighborhood",
       "type": "string",
-      "description": "Exact SF Bay Area neighborhood name (e.g. Mission, North Beach, Oakland, Berkeley). Out-of-market names are refused by protocol \u2014 DayPlay never invents venues.",
-      "editor": "textfield"
+      "description": "Exact SF Bay Area neighborhood name (e.g. Mission, North Beach, Oakland, Berkeley \u2014 see the neighborhoods list at dayplay.io). Out-of-market names are refused by protocol \u2014 DayPlay never invents venues.",
+      "editor": "textfield",
+      "prefill": "Mission"
     },
     "date": {
       "title": "Date",
       "type": "string",
       "editor": "datepicker",
-      "description": "Outing/query date as YYYY-MM-DD. Required for mode=plan and mode=events."
+      "description": "Outing/query date as YYYY-MM-DD. Required for mode=plan and mode=events.",
+      "prefill": "2026-09-26"
     },
     "interests": {
       "title": "Interests",
