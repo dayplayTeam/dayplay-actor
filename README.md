@@ -44,7 +44,7 @@ Results are written to the default dataset, one item per record:
 - `events`/`places` → one item per record (`{status: "ok", type: "event"|"place", name, category, rating, address, ...}`)
 - Refusals/empty results → `{status: "out_of_market"|"zero_results", message, ...}`
 
-Every record includes a `dayplay_deep_link` to the neighborhood page on [dayplay.io](https://www.dayplay.io) — where humans can save plans, get alerts, and explore interactively.
+Every record includes a `dayplay_deep_link` to [dayplay.io](https://www.dayplay.io) — where humans can save plans, get alerts, and explore interactively.
 
 ## Cost
 
