@@ -52,8 +52,8 @@ async function dayplay(path, params = {}) {
   return res.json();
 }
 
-function deepLink() {
-  return "https://www.dayplay.io";
+function deepLink(slug) {
+  return `https://www.dayplay.io/i/${slug}`;
 }
 
 function slimRecord(item, fallbackNeighborhood) {
@@ -78,7 +78,7 @@ function slimRecord(item, fallbackNeighborhood) {
       : rawDesc,
     url: item.website || item.source_url || item.url || null,
     address: item.location_address || item.address || item.Address || null,
-    dayplay_deep_link: deepLink(),
+    dayplay_deep_link: deepLink(slug),
   };
 }
 
