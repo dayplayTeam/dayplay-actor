@@ -20,7 +20,7 @@
     "neighborhood": {
       "title": "Neighborhood",
       "type": "string",
-      "description": "Exact SF Bay Area neighborhood name (e.g. Mission, North Beach, Oakland, Berkeley \u2014 see the neighborhoods list at dayplay.io). Out-of-market names are refused by protocol \u2014 DayPlay never invents venues.",
+      "description": "Exact SF Bay Area neighborhood name (e.g. Mission, North Beach, Oakland, Berkeley — see the neighborhoods list at dayplay.io). Out-of-market names are refused by protocol — DayPlay never invents venues.",
       "editor": "textfield",
       "prefill": "Mission"
     },
@@ -67,8 +67,5 @@
       "description": "Max records returned in events or places mode.",
       "editor": "number"
     }
-  },
-  "required": [
-    "neighborhood"
-  ]
+  }
 }
