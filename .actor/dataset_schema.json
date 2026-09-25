@@ -4,72 +4,182 @@
     "type": "object",
     "properties": {
       "status": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Status",
         "description": "ok | zero_results | out_of_market | input_error"
       },
       "type": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Record type",
         "description": "itinerary | event | place"
       },
       "neighborhood": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Neighborhood"
       },
       "date": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Date (YYYY-MM-DD)"
       },
       "plan": {
-        "type": "object",
+        "type": [
+          "object",
+          "null"
+        ],
         "title": "Itinerary plan",
         "description": "Composed plan: stops[], walk_legs[], total_walk_minutes, estimated_visit_minutes"
       },
       "name": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Name"
       },
       "category": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Category"
       },
       "start_time": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Start time"
       },
       "rating": {
-        "type": "number",
+        "type": [
+          "number",
+          "null"
+        ],
         "title": "Rating"
       },
       "address": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Address"
       },
       "description": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Description"
       },
       "url": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Source URL"
       },
       "message": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Status message",
         "description": "Honest-result explanation for zero_results / out_of_market / input_error items"
       },
       "dayplay_deep_link": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "DayPlay link"
       },
       "powered_by": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Powered by"
       },
       "cta": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "title": "Call to action"
+      },
+      "city": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "title": "City"
+      },
+      "latitude": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "title": "Latitude"
+      },
+      "longitude": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "title": "Longitude"
+      },
+      "radius_km": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "title": "Radius (km)"
+      },
+      "requested": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "title": "Requested neighborhood"
+      },
+      "available_neighborhoods": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "title": "Available neighborhoods",
+        "items": {
+          "type": "string"
+        }
+      },
+      "budget": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "title": "Budget"
+      },
+      "interests": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "title": "Interests",
+        "items": {
+          "type": "string"
+        }
       }
     }
   },
