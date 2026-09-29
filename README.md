@@ -6,7 +6,7 @@ Unlike generic LLM-generated recommendations, every venue and event comes from D
 
 ## What it does
 
-Four modes (pick one in the input form):
+The actor calls the live 40-tool MCP server at `https://api.dayplay.io/mcp`. Four modes cover the common calls. Set `tool` to call any other catalog tool by name.
 
 | Mode | What you get |
 |---|---|

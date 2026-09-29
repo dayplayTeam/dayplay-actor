@@ -1,25 +1,29 @@
 /**
- * DayPlay — SF Bay Area Local Intelligence (Apify Actor)
+ * DayPlay Apify Actor.
  *
- * Wraps DayPlay's verified real-time dataset:
- *   mode=plan          → composed multi-stop itinerary with walk legs (flagship)
- *   mode=events        → verified real-time event records
- *   mode=places        → curated place records
- *   mode=neighborhoods → the 35 in-market neighborhood centroids
- *
- * Anti-Drift Guarantee: if the neighborhood is not in the verified centroid
- * list, the Actor refuses and never fabricates venues. Zero results are
- * reported honestly.
- *
- * Prereq: DAYPLAY_API_KEY env var (set as an Actor secret in Apify Console).
+ * Calls the live MCP catalog at https://api.dayplay.io/mcp (40 tools).
+ * mode selects a common tool. Set `tool` to call any other catalog tool.
+ * Gated tools need `accessToken` from Dayplay Google connect.
  */
 import { Actor } from "apify";
 
-const DAYPLAY_BASE_URL = process.env.DAYPLAY_BASE_URL || "http://44.206.52.210:8080";
-const DAYPLAY_API_KEY = process.env.DAYPLAY_API_KEY;
+const MCP_URL = process.env.DAYPLAY_MCP_URL || "https://api.dayplay.io/mcp";
 
-const OUT_OF_MARKET = "DayPlay is strictly San Francisco Bay Area only (San Francisco, Oakland, Berkeley); it does not cover";
-const DESCRIPTION_MAX = 280;
+const MODE_TOOLS = {
+  neighborhoods: "get_neighborhoods",
+  events: "get_events",
+  places: "get_places",
+  plan: "plan",
+};
+
+function todayPT() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -31,265 +35,191 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function walkMinutes(km) {
-  return Math.max(1, Math.round((km / 4.8) * 60)); // 4.8 km/h urban walking pace
+function parseRpc(raw) {
+  const trimmed = String(raw || "").trim();
+  if (trimmed.startsWith("{")) return JSON.parse(trimmed);
+  const line = trimmed.split(/\r?\n/).find((row) => row.startsWith("data:"));
+  if (!line) throw new Error("empty MCP response");
+  return JSON.parse(line.slice(5).trim());
 }
 
-async function dayplay(path, params = {}) {
-  if (!DAYPLAY_API_KEY) {
-    throw new Error(
-      "DAYPLAY_API_KEY environment variable is required. Set it as a secret in your Apify Actor configuration."
-    );
-  }
-  const url = new URL(path, DAYPLAY_BASE_URL);
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null) url.searchParams.append(k, String(v));
-  }
-  const res = await fetch(url, {
-    headers: { "X-API-Key": DAYPLAY_API_KEY, Accept: "application/json" },
+async function mcpCall(name, args, accessToken) {
+  const headers = {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+  };
+  if (process.env.DAYPLAY_API_KEY) headers["X-API-Key"] = process.env.DAYPLAY_API_KEY;
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const res = await fetch(MCP_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name, arguments: args || {} },
+    }),
   });
-  if (!res.ok) throw new Error(`DayPlay API error ${res.status}`);
-  return res.json();
+  const data = parseRpc(await res.text());
+  if (res.status === 401) return { authRequired: true };
+  if (data.error) throw new Error(data.error.message || "MCP error");
+  const result = data.result || {};
+  const text = result.content?.[0]?.text || "";
+  let parsed = text;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = text;
+  }
+  return { isError: Boolean(result.isError), data: parsed };
 }
 
-function deepLink(slug) {
-  return `https://www.dayplay.io/i/${slug}`;
+function itemsOf(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.items)) return payload.items;
+  return [];
 }
 
-function slimRecord(item, fallbackNeighborhood) {
-  const slug = String(item.neighborhood || item.Neighborhood || fallbackNeighborhood || "sf")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-");
-  const description = item.description || item.Description || "";
-  const cat = item.category || item.primary_type || item.subcategory
-    || (Array.isArray(item.subcategories) && item.subcategories[0])
-    || (Array.isArray(item.genres) && item.genres[0])
-    || null;
-  const rawDesc = item.description || item.Description || "";
-  return {
+function interestList(raw) {
+  return String(raw || "")
+    .split(/[,;]+/)
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function matchesInterest(item, interests) {
+  if (!interests.length) return true;
+  const blob = [
+    item.category,
+    item.primary_type,
+    item.subcategory,
+    item.title,
+    item.name,
+    ...(item.subcategories || []),
+    ...(item.genres || []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return interests.some((interest) => blob.includes(interest));
+}
+
+function composePlan(events, places, input, neighborhood) {
+  const interests = interestList(input.interests);
+  const inScope = [...events, ...places].filter((item) => matchesInterest(item, interests));
+  const pool = (inScope.length ? inScope : [...events, ...places]).slice(0, 12);
+  const maxStops = Math.min(Math.max(Number(input.maxStops) || 4, 2), 6);
+  const stops = pool.slice(0, maxStops).map((item, index) => ({
+    order: index + 1,
     name: item.name || item.title || item.Name || item.Title,
-    category: cat,
-    neighborhood: item.neighborhood || item.Neighborhood || null,
-    city: item.city || item.City || null,
-    start_time: item.start_time || item.event_start_date || item.StartTime || null,
-    rating: item.rating || item.Rating || item.google_rating || null,
-    description: typeof rawDesc === "string" && rawDesc.length > DESCRIPTION_MAX
-      ? rawDesc.slice(0, DESCRIPTION_MAX) + "…"
-      : rawDesc,
-    url: item.website || item.source_url || item.url || null,
-    address: item.location_address || item.address || item.Address || null,
-    dayplay_deep_link: deepLink(slug),
+    category: item.category || (Array.isArray(item.subcategories) ? item.subcategories[0] : null) || null,
+    address: item.location_address || item.address || null,
+    latitude: item.latitude ?? item.Latitude ?? null,
+    longitude: item.longitude ?? item.Longitude ?? null,
+  }));
+  const legs = [];
+  for (let i = 1; i < stops.length; i++) {
+    const prev = stops[i - 1];
+    const next = stops[i];
+    if (prev.latitude == null || next.latitude == null) continue;
+    const km = haversineKm(prev.latitude, prev.longitude, next.latitude, next.longitude);
+    legs.push({
+      from: prev.name,
+      to: next.name,
+      distance_km: Math.round(km * 10) / 10,
+      walk_minutes: Math.max(1, Math.round((km / 4.8) * 60)),
+    });
+  }
+  return {
+    status: stops.length ? "ok" : "zero_results",
+    type: "itinerary",
+    tool: "get_events+get_places",
+    neighborhood,
+    date: input.date,
+    interests: interests.length ? interests : null,
+    interests_applied: Boolean(interests.length && inScope.length),
+    plan: {
+      stops,
+      walk_legs: legs,
+      total_walk_minutes: legs.reduce((sum, leg) => sum + leg.walk_minutes, 0),
+    },
+    powered_by: "https://www.dayplay.io",
   };
 }
 
 await Actor.main(async () => {
   const input = (await Actor.getInput()) || {};
-  const mode = input.mode || "plan";
+  const accessToken = input.accessToken || process.env.DAYPLAY_ACCESS_TOKEN || "";
+  const date = input.date || todayPT();
   const neighborhood = input.neighborhood;
-  const limit = Math.min(Number(input.limit) || 20, 100);
 
-  // Scope oracle: the centroid list is the single source of truth for in-market
-  const nbData = await dayplay("/v1/marketing/neighborhoods");
-  const centroids = nbData?.items || [];
+  if (input.tool) {
+    const called = await mcpCall(input.tool, input.arguments || {}, accessToken);
+    if (called.authRequired) {
+      await Actor.pushData({
+        status: "auth_required",
+        tool: input.tool,
+        message: "This tool needs a Dayplay user access token. Pass accessToken from Google connect.",
+      });
+      return;
+    }
+    await Actor.pushData({
+      status: called.isError ? "error" : "ok",
+      tool: input.tool,
+      result: called.data,
+    });
+    return;
+  }
 
-  // neighborhoods mode needs no neighborhood input — dispatch BEFORE the
-  // in-market guard so it always lists the full serviceable market.
+  const mode = input.mode || "plan";
   if (mode === "neighborhoods") {
+    const called = await mcpCall("get_neighborhoods", {}, accessToken);
+    const centroids = itemsOf(called.data);
     await Actor.pushData(
-      centroids.map((c) => ({
+      centroids.map((item) => ({
         status: "ok",
-        neighborhood: c.Name,
-        latitude: c.Latitude,
-        longitude: c.Longitude,
-        radius_km: c.RadiusKm,
-        powered_by: "https://www.dayplay.io",
+        tool: "get_neighborhoods",
+        neighborhood: item.Name || item.name,
+        latitude: item.Latitude ?? item.latitude,
+        longitude: item.Longitude ?? item.longitude,
+        radius_km: item.RadiusKm ?? item.radius_km,
       }))
     );
     return;
   }
 
-  const target = centroids.find(
-    (c) => c.Name && neighborhood && c.Name.toLowerCase() === String(neighborhood).trim().toLowerCase()
-  );
-
-  if (!target) {
+  if (!neighborhood) {
     await Actor.pushData({
-      status: neighborhood ? "out_of_market" : "input_error",
-      requested: neighborhood || null,
-      message: neighborhood
-        ? `${OUT_OF_MARKET} ${neighborhood}. It serves only San Francisco, Oakland, and Berkeley. No venues, events, dates, hours, or neighborhoods were fabricated for this location.`
-        : "The 'neighborhood' input is required for all modes except 'neighborhoods'. Pick one from the available list.",
-      available_neighborhoods: centroids.map((c) => c.Name),
-      powered_by: "https://www.dayplay.io",
+      status: "input_error",
+      message: "neighborhood is required unless mode is neighborhoods or tool is set.",
     });
     return;
   }
 
-  if (mode === "events") {
-    if (!input.date) throw new Error("mode=events requires 'date' (YYYY-MM-DD)");
-    const data = await dayplay("/v1/marketing/events", {
-      date: input.date,
-      neighborhood: target.Name,
-      limit,
-    });
-    const records = (data?.items || []).filter((e) => {
-      const lat = e.latitude ?? e.Latitude;
-      const lon = e.longitude ?? e.Longitude;
-      if (lat == null || lon == null) return false;
-      const dist = haversineKm(target.Latitude, target.Longitude, lat, lon);
-      return dist <= (target.RadiusKm || 1.5) * 1.15;
-    });
+  if (mode === "events" || mode === "places") {
+    const tool = MODE_TOOLS[mode];
+    const args = { neighborhood, limit: Math.min(Number(input.limit) || 20, 100) };
+    if (mode === "events") {
+      args.date = date;
+      if (input.interests) args.category = input.interests;
+    }
+    const called = await mcpCall(tool, args, accessToken);
+    const records = itemsOf(called.data);
     if (!records.length) {
-      await Actor.pushData({
-        status: "zero_results",
-        neighborhood: target.Name,
-        date: input.date,
-        message: "No verified events found for this neighborhood and date. This is an honest result — DayPlay does not fabricate events.",
-        powered_by: "https://www.dayplay.io",
-      });
+      await Actor.pushData({ status: "zero_results", tool, neighborhood, date, result: called.data });
       return;
     }
-    await Actor.pushData(records.map((r) => ({ status: "ok", type: "event", ...slimRecord(r, target.Name) })));
+    await Actor.pushData(records.map((record) => ({ status: "ok", tool, type: mode === "events" ? "event" : "place", ...record })));
     return;
   }
 
-  if (mode === "places") {
-    const data = await dayplay("/v1/marketing/places", {
-      neighborhood: target.Name,
-      open_now: input.open_now !== undefined ? String(input.open_now) : undefined,
-      limit,
-    });
-    const records = (data?.items || []).filter((p) => {
-      const lat = p.latitude ?? p.Latitude;
-      const lon = p.longitude ?? p.Longitude;
-      if (lat == null || lon == null) return false;
-      const dist = haversineKm(target.Latitude, target.Longitude, lat, lon);
-      return dist <= (target.RadiusKm || 1.5) * 1.15;
-    });
-    if (!records.length) {
-      await Actor.pushData({
-        status: "zero_results",
-        neighborhood: target.Name,
-        message: "No verified places found. This is an honest result — DayPlay does not fabricate venues.",
-        powered_by: "https://www.dayplay.io",
-      });
-      return;
-    }
-    await Actor.pushData(records.map((r) => ({ status: "ok", type: "place", ...slimRecord(r, target.Name) })));
-    return;
-  }
-
-  // ── mode=plan (flagship): composed itinerary ──
-  if (!input.date) throw new Error("mode=plan requires 'date' (YYYY-MM-DD)");
-  const interests = String(input.interests || "")
-    .split(/[,;]+/)
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  const categories = interests.length ? interests : ["food", "music", "arts", "nightlife", "outdoors"];
-
-  const [eventsRes, placesRes] = await Promise.allSettled([
-    dayplay("/v1/marketing/events", { date: input.date, neighborhood: target.Name, limit: 30 }),
-    dayplay("/v1/marketing/places", { neighborhood: target.Name, limit: 30 }),
+  const eventArgs = { date, neighborhood, limit: 30 };
+  if (input.interests) eventArgs.category = input.interests;
+  const [eventsRes, placesRes] = await Promise.all([
+    mcpCall("get_events", eventArgs, accessToken),
+    mcpCall("get_places", { neighborhood, limit: 30, ...(input.interests ? { category: input.interests } : {}) }, accessToken),
   ]);
-  const events = eventsRes.status === "fulfilled" ? eventsRes.value?.items || [] : [];
-  const places = placesRes.status === "fulfilled" ? placesRes.value?.items || [] : [];
-
-  const inScope = (arr) =>
-    arr.filter((x) => {
-      const lat = x.latitude ?? x.Latitude;
-      const lon = x.longitude ?? x.Longitude;
-      if (lat == null || lon == null) return false;
-      return haversineKm(target.Latitude, target.Longitude, lat, lon) <= (target.RadiusKm || 1.5) * 1.15;
-    });
-
-  const scored = (arr, kind) =>
-    inScope(arr).map((x, i) => ({
-      kind,
-      rank: (x.rating || x.Rating || x.google_rating || 0) * 10 - i,
-      raw: x,
-    }));
-
-  // Deterministic diverse-category fill
-  const pool = [...scored(events, "event"), ...scored(places, "place")].sort((a, b) => b.rank - a.rank);
-  const maxStops = Math.min(Math.max(Number(input.maxStops) || 4, 2), 6);
-  const pickCat = (x) => String(
-    x.category || x.primary_type || x.subcategory
-    || (Array.isArray(x.subcategories) && x.subcategories[0])
-    || (Array.isArray(x.genres) && x.genres[0])
-    || ""
-  ).toLowerCase() || "venue";
-  const pickName = (x) => x.name || x.title || x.Name || x.Title;
-  const pickDesc = (x) => {
-    const d = x.description || x.Description || "";
-    return typeof d === "string" && d.length > DESCRIPTION_MAX ? d.slice(0, DESCRIPTION_MAX) + "…" : d;
-  };
-  const picked = [];
-  const usedCats = new Set();
-  for (const item of pool) {
-    if (picked.length >= maxStops) break;
-    const cat = pickCat(item.raw);
-    if (usedCats.has(cat) && picked.length < 2) continue;
-    usedCats.add(cat);
-    picked.push(item);
-  }
-
-  // Budget soft filter
-  let stops = picked;
-  if (input.budget === "free" || input.budget === "budget") {
-    const filtered = picked.filter(
-      (s) => !/splurge|fine|\$\$\$\$|luxur/i.test(String(s.raw.description || s.raw.Description || ""))
-    );
-    if (filtered.length >= 2) stops = filtered;
-  }
-
-  if (!stops.length) {
-    await Actor.pushData({
-      status: "zero_results",
-      neighborhood: target.Name,
-      date: input.date,
-      message: "No verified stops found for this neighborhood and date. An empty plan is an honest answer — DayPlay does not fabricate stops.",
-      powered_by: "https://www.dayplay.io",
-    });
-    return;
-  }
-
-  const itineraryStops = stops.map((s, i) => ({
-    order: i + 1,
-    kind: s.kind,
-    name: pickName(s.raw),
-    category: pickCat(s.raw) || null,
-    start_time: s.raw.start_time || s.raw.event_start_date || s.raw.StartTime || null,
-    description: pickDesc(s.raw),
-    address: s.raw.location_address || s.raw.address || s.raw.Address || null,
-  }));
-
-  const legs = [];
-  for (let i = 1; i < stops.length; i++) {
-    const la = (x) => x.raw.latitude ?? x.raw.Latitude;
-    const lo = (x) => x.raw.longitude ?? x.raw.Longitude;
-    const km = haversineKm(la(stops[i - 1]), lo(stops[i - 1]), la(stops[i]), lo(stops[i]));
-    legs.push({
-      from: itineraryStops[i - 1].name,
-      to: itineraryStops[i].name,
-      distance_km: Math.round(km * 10) / 10,
-      walk_minutes: walkMinutes(km),
-    });
-  }
-
-  await Actor.pushData({
-    status: "ok",
-    type: "itinerary",
-    neighborhood: target.Name,
-    date: input.date,
-    plan: {
-      stops: itineraryStops,
-      walk_legs: legs,
-      total_walk_minutes: legs.reduce((acc, l) => acc + l.walk_minutes, 0),
-      estimated_visit_minutes: itineraryStops.length * 45,
-    },
-    budget: input.budget || null,
-    interests: interests.length ? interests : null,
-    powered_by: "https://www.dayplay.io",
-    cta: "Open DayPlay to save this plan and get live alerts: https://www.dayplay.io",
-  });
+  await Actor.pushData(
+    composePlan(itemsOf(eventsRes.data), itemsOf(placesRes.data), { ...input, date }, neighborhood)
+  );
 });

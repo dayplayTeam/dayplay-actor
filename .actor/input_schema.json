@@ -14,7 +14,7 @@
         "neighborhoods"
       ],
       "default": "plan",
-      "description": "plan = composed multi-stop itinerary with walk times (flagship). events/places = raw verified records. neighborhoods = the 35 in-market centroids.",
+      "description": "plan calls get_events and get_places and builds a walk itinerary. events, places, and neighborhoods call those MCP tools. Set tool to call any other of the 40 tools.",
       "editor": "select"
     },
     "neighborhood": {
@@ -28,8 +28,7 @@
       "title": "Date",
       "type": "string",
       "editor": "datepicker",
-      "description": "Outing/query date as YYYY-MM-DD. Required for mode=plan and mode=events.",
-      "prefill": "2026-09-26"
+      "description": "Outing or event date as YYYY-MM-DD. Defaults to today in America/Los_Angeles when omitted."
     },
     "interests": {
       "title": "Interests",
@@ -57,6 +56,24 @@
       "default": 4,
       "description": "Maximum number of stops in a composed itinerary.",
       "editor": "number"
+    },
+    "tool": {
+      "title": "MCP tool",
+      "type": "string",
+      "editor": "textfield",
+      "description": "Optional. When set, this exact tool from https://api.dayplay.io/mcp is called and mode is ignored. Example: get_happening_today."
+    },
+    "arguments": {
+      "title": "Tool arguments",
+      "type": "object",
+      "editor": "json",
+      "description": "JSON arguments for tool. Example: {\"lat\": 37.76, \"lng\": -122.42, \"radius_km\": 2}."
+    },
+    "accessToken": {
+      "title": "Dayplay access token",
+      "type": "string",
+      "editor": "textfield",
+      "description": "User bearer token from Google connect. Required for gated tools such as plan_outing, search_smart, and saves."
     },
     "limit": {
       "title": "Record limit (events/places mode)",
