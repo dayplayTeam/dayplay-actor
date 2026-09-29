@@ -16,6 +16,14 @@ const MODE_TOOLS = {
   plan: "plan",
 };
 
+const INTEREST_WORDS = {
+  food: ["food", "restaurant", "cafe", "café", "bakery", "taqueria", "taco", "pizza", "dining", "kitchen", "brunch", "coffee", "deli"],
+  music: ["music", "concert", "jazz", "band", "dj", "venue", "live music"],
+  art: ["art", "gallery", "museum", "exhibit", "exhibition"],
+  comedy: ["comedy", "standup", "stand-up", "comic"],
+  drinks: ["bar", "brewery", "wine", "cocktail", "drinks", "nightlife", "pub"],
+};
+
 function todayPT() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Los_Angeles",
@@ -62,7 +70,7 @@ async function mcpCall(name, args, accessToken) {
   });
   const data = parseRpc(await res.text());
   if (res.status === 401) return { authRequired: true };
-  if (data.error) throw new Error(data.error.message || "MCP error");
+  if (data.error) return { error: data.error.message || "MCP error" };
   const result = data.result || {};
   const text = result.content?.[0]?.text || "";
   let parsed = text;
@@ -80,6 +88,59 @@ function itemsOf(payload) {
   return [];
 }
 
+function neighborhoodName(item) {
+  return item?.Name || item?.name || "";
+}
+
+function normName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
+}
+
+function findNeighborhood(centroids, name) {
+  const key = normName(name);
+  const plain = String(name || "").trim().toLowerCase();
+  return centroids.find((item) => {
+    const label = neighborhoodName(item);
+    return normName(label) === key || label.trim().toLowerCase() === plain;
+  });
+}
+
+function decodeText(value) {
+  if (typeof value !== "string") return value;
+  return value
+    .replace(/&#(\d+);/g, (_, n) => {
+      const code = Number(n);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : _;
+    })
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'");
+}
+
+function cleanItem(item, neighborhood) {
+  const next = { ...item };
+  for (const key of ["title", "name", "description", "Title", "Name"]) {
+    if (typeof next[key] === "string") next[key] = decodeText(next[key]);
+  }
+  const label = neighborhoodName(neighborhood);
+  if (/^(oakland|berkeley)$/i.test(label) && next.city === "San Francisco") {
+    const lat = next.latitude ?? next.Latitude;
+    const lng = next.longitude ?? next.Longitude;
+    const nlat = neighborhood.Latitude ?? neighborhood.latitude;
+    const nlng = neighborhood.Longitude ?? neighborhood.longitude;
+    const radius = Number(neighborhood.RadiusKm ?? neighborhood.radius_km) || 3;
+    if (lat != null && lng != null && haversineKm(nlat, nlng, lat, lng) <= radius + 0.2) {
+      next.city = label;
+    }
+  }
+  return next;
+}
+
 function interestList(raw) {
   return String(raw || "")
     .split(/[,;]+/)
@@ -87,32 +148,79 @@ function interestList(raw) {
     .filter(Boolean);
 }
 
-function matchesInterest(item, interests) {
-  if (!interests.length) return true;
-  const blob = [
+function itemBlob(item) {
+  return [
     item.category,
     item.primary_type,
     item.subcategory,
+    item.genre,
     item.title,
     item.name,
-    ...(item.subcategories || []),
-    ...(item.genres || []),
+    ...(Array.isArray(item.subcategories) ? item.subcategories : []),
+    ...(Array.isArray(item.subcategory) ? item.subcategory : []),
+    ...(Array.isArray(item.genres) ? item.genres : []),
+    ...(Array.isArray(item.tags) ? item.tags : []),
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
-  return interests.some((interest) => blob.includes(interest));
+}
+
+function blobHas(blob, word) {
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}`, "i").test(blob);
+}
+
+function matchesInterest(item, interests) {
+  if (!interests.length) return true;
+  const blob = itemBlob(item);
+  return interests.some((interest) => {
+    const words = INTEREST_WORDS[interest] || [interest];
+    return words.some((word) => blobHas(blob, word));
+  });
+}
+
+function priceTier(item) {
+  const raw = item.price_tier ?? item.priceTier;
+  const tier = Number(raw);
+  return Number.isFinite(tier) ? tier : null;
+}
+
+function matchesBudget(item, budget) {
+  if (!budget) return true;
+  const tier = priceTier(item);
+  const title = String(item.title || item.name || "").toLowerCase();
+  if (budget === "free") return tier === 0 || title.includes("free");
+  if (tier == null) return false;
+  if (budget === "budget") return tier <= 1;
+  if (budget === "moderate") return tier === 2;
+  if (budget === "splurge") return tier >= 3;
+  return true;
+}
+
+function applyInterests(items, interests) {
+  if (!interests.length) return { items, applied: false };
+  const matched = items.filter((item) => matchesInterest(item, interests));
+  if (!matched.length) return { items, applied: false };
+  return { items: matched, applied: true };
 }
 
 function composePlan(events, places, input, neighborhood) {
   const interests = interestList(input.interests);
-  const inScope = [...events, ...places].filter((item) => matchesInterest(item, interests));
-  const pool = (inScope.length ? inScope : [...events, ...places]).slice(0, 12);
+  const interested = applyInterests([...events, ...places], interests);
+  let pool = interested.items;
+  let budgetApplied = false;
+  if (input.budget) {
+    budgetApplied = true;
+    pool = pool.filter((item) => matchesBudget(item, input.budget));
+  }
+  const ranked = pool.slice(0, 12);
   const maxStops = Math.min(Math.max(Number(input.maxStops) || 4, 2), 6);
-  const stops = pool.slice(0, maxStops).map((item, index) => ({
+  const stops = ranked.slice(0, maxStops).map((item, index) => ({
     order: index + 1,
     name: item.name || item.title || item.Name || item.Title,
     category: item.category || (Array.isArray(item.subcategories) ? item.subcategories[0] : null) || null,
+    price_tier: priceTier(item),
     address: item.location_address || item.address || null,
     latitude: item.latitude ?? item.Latitude ?? null,
     longitude: item.longitude ?? item.Longitude ?? null,
@@ -137,7 +245,9 @@ function composePlan(events, places, input, neighborhood) {
     neighborhood,
     date: input.date,
     interests: interests.length ? interests : null,
-    interests_applied: Boolean(interests.length && inScope.length),
+    interests_applied: interested.applied,
+    budget: input.budget || null,
+    budget_applied: budgetApplied && stops.length > 0,
     plan: {
       stops,
       walk_legs: legs,
@@ -163,6 +273,14 @@ await Actor.main(async () => {
       });
       return;
     }
+    if (called.error) {
+      await Actor.pushData({
+        status: "input_error",
+        tool: input.tool,
+        message: called.error,
+      });
+      return;
+    }
     await Actor.pushData({
       status: called.isError ? "error" : "ok",
       tool: input.tool,
@@ -172,14 +290,16 @@ await Actor.main(async () => {
   }
 
   const mode = input.mode || "plan";
+  const listed = await mcpCall("get_neighborhoods", {}, accessToken);
+  if (listed.error) throw new Error(listed.error);
+  const centroids = itemsOf(listed.data);
+
   if (mode === "neighborhoods") {
-    const called = await mcpCall("get_neighborhoods", {}, accessToken);
-    const centroids = itemsOf(called.data);
     await Actor.pushData(
       centroids.map((item) => ({
         status: "ok",
         tool: "get_neighborhoods",
-        neighborhood: item.Name || item.name,
+        neighborhood: neighborhoodName(item),
         latitude: item.Latitude ?? item.latitude,
         longitude: item.Longitude ?? item.longitude,
         radius_km: item.RadiusKm ?? item.radius_km,
@@ -196,30 +316,66 @@ await Actor.main(async () => {
     return;
   }
 
+  const resolved = findNeighborhood(centroids, neighborhood);
+  if (!resolved) {
+    await Actor.pushData({
+      status: "out_of_market",
+      neighborhood,
+      message: "Dayplay covers San Francisco, Oakland, and Berkeley. That neighborhood is outside the market.",
+      neighborhoods: centroids.map(neighborhoodName).filter(Boolean),
+    });
+    return;
+  }
+  const neighborhoodLabel = neighborhoodName(resolved);
+
   if (mode === "events" || mode === "places") {
     const tool = MODE_TOOLS[mode];
-    const args = { neighborhood, limit: Math.min(Number(input.limit) || 20, 100) };
-    if (mode === "events") {
-      args.date = date;
-      if (input.interests) args.category = input.interests;
-    }
+    const limit = Math.min(Number(input.limit) || 20, 100);
+    const args = { neighborhood: neighborhoodLabel, limit: input.interests ? 100 : limit };
+    if (mode === "events") args.date = date;
     const called = await mcpCall(tool, args, accessToken);
-    const records = itemsOf(called.data);
-    if (!records.length) {
-      await Actor.pushData({ status: "zero_results", tool, neighborhood, date, result: called.data });
+    if (called.error) {
+      await Actor.pushData({ status: "error", tool, message: called.error });
       return;
     }
-    await Actor.pushData(records.map((record) => ({ status: "ok", tool, type: mode === "events" ? "event" : "place", ...record })));
+    const prepared = itemsOf(called.data).map((item) => cleanItem(item, resolved));
+    const picked = applyInterests(prepared, interestList(input.interests));
+    const records = picked.items.slice(0, limit);
+    if (!records.length) {
+      await Actor.pushData({
+        status: "zero_results",
+        tool,
+        neighborhood: neighborhoodLabel,
+        date,
+        interests_applied: picked.applied,
+        result: called.data,
+      });
+      return;
+    }
+    await Actor.pushData(
+      records.map((record) => ({
+        status: "ok",
+        tool,
+        type: mode === "events" ? "event" : "place",
+        interests_applied: picked.applied,
+        ...record,
+      }))
+    );
     return;
   }
 
-  const eventArgs = { date, neighborhood, limit: 30 };
-  if (input.interests) eventArgs.category = input.interests;
   const [eventsRes, placesRes] = await Promise.all([
-    mcpCall("get_events", eventArgs, accessToken),
-    mcpCall("get_places", { neighborhood, limit: 30, ...(input.interests ? { category: input.interests } : {}) }, accessToken),
+    mcpCall("get_events", { date, neighborhood: neighborhoodLabel, limit: 40 }, accessToken),
+    mcpCall("get_places", { neighborhood: neighborhoodLabel, limit: 40 }, accessToken),
   ]);
-  await Actor.pushData(
-    composePlan(itemsOf(eventsRes.data), itemsOf(placesRes.data), { ...input, date }, neighborhood)
-  );
+  if (eventsRes.error || placesRes.error) {
+    await Actor.pushData({
+      status: "error",
+      message: eventsRes.error || placesRes.error,
+    });
+    return;
+  }
+  const events = itemsOf(eventsRes.data).map((item) => cleanItem(item, resolved));
+  const places = itemsOf(placesRes.data).map((item) => cleanItem(item, resolved));
+  await Actor.pushData(composePlan(events, places, { ...input, date }, neighborhoodLabel));
 });

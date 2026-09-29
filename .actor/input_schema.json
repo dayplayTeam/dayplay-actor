@@ -33,7 +33,7 @@
     "interests": {
       "title": "Interests",
       "type": "string",
-      "description": "Optional comma-separated interests (e.g. music, food, art, comedy) to prioritize in plan mode.",
+      "description": "Optional comma-separated interests (e.g. music, food, art, comedy). Applied in events, places, and plan mode. A miss falls back to the unfiltered neighborhood list.",
       "editor": "textfield"
     },
     "budget": {
