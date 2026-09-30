@@ -3,7 +3,7 @@
   "name": "dayplay-local-intelligence",
   "title": "DayPlay \u2014 SF Bay Area Events, Places & Itinerary Planner",
   "description": "Calls the DayPlay MCP catalog (40 tools) at https://api.dayplay.io/mcp. Places, events, neighborhood centroids, and walkable outing plans for San Francisco, Oakland, and Berkeley. Set tool to call any catalog tool. Free. Powered by dayplay.io.",
-  "version": "0.3",
+  "version": "0.4",
   "buildTag": "latest",
   "minMemoryMbytes": 256,
   "input": "./input_schema.json",

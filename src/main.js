@@ -17,12 +17,28 @@ const MODE_TOOLS = {
 };
 
 const INTEREST_WORDS = {
-  food: ["food", "restaurant", "cafe", "café", "bakery", "taqueria", "taco", "pizza", "dining", "kitchen", "brunch", "coffee", "deli"],
-  music: ["music", "concert", "jazz", "band", "dj", "venue", "live music"],
-  art: ["art", "gallery", "museum", "exhibit", "exhibition"],
+  food: ["restaurant", "cafe", "café", "bakery", "taqueria", "taco", "pizza", "deli", "brunch", "coffee", "diner", "bistro", "eatery"],
+  music: ["music", "concert", "jazz", "symphony", "orchestra", "recital", "dj", "band"],
+  art: ["gallery", "museum", "exhibit", "exhibition"],
   comedy: ["comedy", "standup", "stand-up", "comic"],
-  drinks: ["bar", "brewery", "wine", "cocktail", "drinks", "nightlife", "pub"],
+  drinks: ["bar", "brewery", "wine", "cocktail", "nightlife", "pub", "tavern"],
 };
+
+const ART_TITLE_WORDS = ["art"];
+
+const FAR_PLACES = [
+  "larkspur",
+  "marin",
+  "sausalito",
+  "mill valley",
+  "san rafael",
+  "tiburon",
+  "daly city",
+  "san jose",
+  "los angeles",
+  "santa cruz",
+  "sacramento",
+];
 
 function todayPT() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -166,18 +182,69 @@ function itemBlob(item) {
     .toLowerCase();
 }
 
-function blobHas(blob, word) {
+function blobHasWord(blob, word) {
   const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?:^|[^a-z0-9])${escaped}`, "i").test(blob);
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?=[^a-z0-9]|$)`, "i").test(blob);
 }
 
 function matchesInterest(item, interests) {
   if (!interests.length) return true;
   const blob = itemBlob(item);
+  const title = String(item.title || item.name || "");
+  const place = String(item.location_name || "");
   return interests.some((interest) => {
     const words = INTEREST_WORDS[interest] || [interest];
-    return words.some((word) => blobHas(blob, word));
+    if (words.some((word) => blobHasWord(blob, word))) return true;
+    if (interest === "art" && ART_TITLE_WORDS.some((word) => blobHasWord(title.toLowerCase(), word))) return true;
+    if (interest === "music" && blobHasWord(`${title} ${place}`.toLowerCase(), "tour") && blobHasWord(`${title} ${place}`.toLowerCase(), "theatre")) {
+      return true;
+    }
+    if (interest === "music" && blobHasWord(`${title} ${place}`.toLowerCase(), "tour") && blobHasWord(`${title} ${place}`.toLowerCase(), "theater")) {
+      return true;
+    }
+    return false;
   });
+}
+
+function neighborhoodAliases(label) {
+  const name = String(label || "").toLowerCase();
+  const aliases = [name];
+  if (name === "potrero hill") aliases.push("potrero");
+  if (name === "soma") aliases.push("soma");
+  return aliases;
+}
+
+function namesSomewhereElse(item, requested, centroids) {
+  const place = String(item.location_name || item.venue || "").toLowerCase();
+  const address = String(item.location_address || item.address || "").toLowerCase();
+  const where = `${place} ${address}`;
+  if (!where.trim()) return false;
+  if (blobHasWord(where, "virtual")) return true;
+  if (FAR_PLACES.some((token) => blobHasWord(where, token))) return true;
+  const requestedKey = normName(neighborhoodName(requested));
+  for (const other of centroids) {
+    const label = neighborhoodName(other);
+    if (normName(label) === requestedKey) continue;
+    if (neighborhoodAliases(label).some((alias) => alias.length >= 4 && blobHasWord(place, alias))) return true;
+  }
+  return false;
+}
+
+function dedupeEvents(items) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const day = String(item.event_start_date || "").slice(0, 10);
+    const key = [
+      String(item.title || item.name || "").trim().toLowerCase(),
+      String(item.location_name || "").trim().toLowerCase(),
+      day,
+    ].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 function priceTier(item) {
@@ -331,14 +398,17 @@ await Actor.main(async () => {
   if (mode === "events" || mode === "places") {
     const tool = MODE_TOOLS[mode];
     const limit = Math.min(Number(input.limit) || 20, 100);
-    const args = { neighborhood: neighborhoodLabel, limit: input.interests ? 100 : limit };
+    const args = { neighborhood: neighborhoodLabel, limit: 100 };
     if (mode === "events") args.date = date;
     const called = await mcpCall(tool, args, accessToken);
     if (called.error) {
       await Actor.pushData({ status: "error", tool, message: called.error });
       return;
     }
-    const prepared = itemsOf(called.data).map((item) => cleanItem(item, resolved));
+    const cleaned = itemsOf(called.data)
+      .map((item) => cleanItem(item, resolved))
+      .filter((item) => !namesSomewhereElse(item, resolved, centroids));
+    const prepared = mode === "events" ? dedupeEvents(cleaned) : cleaned;
     const picked = applyInterests(prepared, interestList(input.interests));
     const records = picked.items.slice(0, limit);
     if (!records.length) {
@@ -375,7 +445,13 @@ await Actor.main(async () => {
     });
     return;
   }
-  const events = itemsOf(eventsRes.data).map((item) => cleanItem(item, resolved));
-  const places = itemsOf(placesRes.data).map((item) => cleanItem(item, resolved));
+  const events = dedupeEvents(
+    itemsOf(eventsRes.data)
+      .map((item) => cleanItem(item, resolved))
+      .filter((item) => !namesSomewhereElse(item, resolved, centroids)),
+  );
+  const places = itemsOf(placesRes.data)
+    .map((item) => cleanItem(item, resolved))
+    .filter((item) => !namesSomewhereElse(item, resolved, centroids));
   await Actor.pushData(composePlan(events, places, { ...input, date }, neighborhoodLabel));
 });
