@@ -1,0 +1,35 @@
+name: Push Actor to Apify
+
+# A push to main publishes dayplay/dayplay-local-intelligence and tags the
+# successful build latest. Secret APIFY_TOKEN is an Apify API token from
+# Console → Settings → API & Integrations. It is not a GitHub token.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  push-actor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require Apify token
+        env:
+          TOKEN: ${{ secrets.APIFY_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::Set secret APIFY_TOKEN on dayplayTeam/dayplay-actor. Create it in Apify Console under Settings, API & Integrations."
+            exit 1
+          fi
+
+      - name: Push Actor to Apify
+        id: push
+        uses: apify/push-actor-action@v1
+        with:
+          token: ${{ secrets.APIFY_TOKEN }}
+          actor-id: dayplay/dayplay-local-intelligence
+
+      - name: Print build details
+        run: echo "Build ${{ steps.push.outputs.build-id }} finished with status ${{ steps.push.outputs.build-status }}"
