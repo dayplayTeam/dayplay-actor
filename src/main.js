@@ -18,13 +18,19 @@ const MODE_TOOLS = {
 
 const INTEREST_WORDS = {
   food: ["restaurant", "cafe", "café", "bakery", "taqueria", "taco", "pizza", "deli", "brunch", "coffee", "diner", "bistro", "eatery"],
-  music: ["music", "concert", "jazz", "symphony", "orchestra", "recital", "dj", "band"],
+  music: ["music", "concert", "jazz", "symphony", "orchestra", "recital", "dj", "band", "reggae", "hip-hop", "rap", "folk", "blues", "soul", "punk"],
   art: ["gallery", "museum", "exhibit", "exhibition"],
   comedy: ["comedy", "standup", "stand-up", "comic"],
   drinks: ["bar", "brewery", "wine", "cocktail", "nightlife", "pub", "tavern"],
 };
 
 const ART_TITLE_WORDS = ["art"];
+
+const INTEREST_BLOCK = {
+  food: ["record", "bookstore", "library", "park", "museum", "gallery"],
+  drinks: ["library", "park", "museum", "bookstore", "gallery"],
+  art: ["comedy", "movie"],
+};
 
 const FAR_PLACES = [
   "larkspur",
@@ -192,16 +198,17 @@ function matchesInterest(item, interests) {
   const blob = itemBlob(item);
   const title = String(item.title || item.name || "");
   const place = String(item.location_name || "");
+  const headline = `${title} ${place}`.toLowerCase();
   return interests.some((interest) => {
+    const blocks = INTEREST_BLOCK[interest] || [];
+    const identity = [title, item.primary_type, item.category, item.genre].filter(Boolean).join(" ").toLowerCase();
+    if (blocks.some((word) => blobHasWord(identity, word))) return false;
     const words = INTEREST_WORDS[interest] || [interest];
     if (words.some((word) => blobHasWord(blob, word))) return true;
     if (interest === "art" && ART_TITLE_WORDS.some((word) => blobHasWord(title.toLowerCase(), word))) return true;
-    if (interest === "music" && blobHasWord(`${title} ${place}`.toLowerCase(), "tour") && blobHasWord(`${title} ${place}`.toLowerCase(), "theatre")) {
-      return true;
-    }
-    if (interest === "music" && blobHasWord(`${title} ${place}`.toLowerCase(), "tour") && blobHasWord(`${title} ${place}`.toLowerCase(), "theater")) {
-      return true;
-    }
+    const tour = blobHasWord(headline, "tour");
+    const theatre = blobHasWord(headline, "theatre") || blobHasWord(headline, "theater");
+    if (interest === "music" && tour && theatre) return true;
     return false;
   });
 }
@@ -214,18 +221,29 @@ function neighborhoodAliases(label) {
   return aliases;
 }
 
+function homeCity(label) {
+  const name = String(label || "").toLowerCase();
+  if (name === "oakland") return "oakland";
+  if (name === "berkeley") return "berkeley";
+  return "san francisco";
+}
+
 function namesSomewhereElse(item, requested, centroids) {
   const place = String(item.location_name || item.venue || "").toLowerCase();
   const address = String(item.location_address || item.address || "").toLowerCase();
-  const where = `${place} ${address}`;
+  const title = String(item.title || item.name || "").toLowerCase();
+  const where = `${title} ${place} ${address}`;
   if (!where.trim()) return false;
   if (blobHasWord(where, "virtual")) return true;
   if (FAR_PLACES.some((token) => blobHasWord(where, token))) return true;
+  const city = homeCity(neighborhoodName(requested));
+  const otherCities = ["san francisco", "oakland", "berkeley"].filter((name) => name !== city);
+  if (otherCities.some((name) => blobHasWord(where, name))) return true;
   const requestedKey = normName(neighborhoodName(requested));
   for (const other of centroids) {
     const label = neighborhoodName(other);
     if (normName(label) === requestedKey) continue;
-    if (neighborhoodAliases(label).some((alias) => alias.length >= 4 && blobHasWord(place, alias))) return true;
+    if (neighborhoodAliases(label).some((alias) => alias.length >= 4 && blobHasWord(`${title} ${place}`, alias))) return true;
   }
   return false;
 }
@@ -267,9 +285,7 @@ function matchesBudget(item, budget) {
 
 function applyInterests(items, interests) {
   if (!interests.length) return { items, applied: false };
-  const matched = items.filter((item) => matchesInterest(item, interests));
-  if (!matched.length) return { items, applied: false };
-  return { items: matched, applied: true };
+  return { items: items.filter((item) => matchesInterest(item, interests)), applied: true };
 }
 
 function composePlan(events, places, input, neighborhood) {
@@ -418,6 +434,7 @@ await Actor.main(async () => {
         neighborhood: neighborhoodLabel,
         date,
         interests_applied: picked.applied,
+        message: picked.applied ? "No rows matched that interest inside this neighborhood." : undefined,
         result: called.data,
       });
       return;
